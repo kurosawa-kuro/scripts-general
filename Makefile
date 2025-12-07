@@ -11,7 +11,7 @@ help: ## Show this help
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
 # =============================================================================
@@ -82,6 +82,12 @@ cognito-show: ## Show Cognito User Pool (POOL=name)
 s3-create: ## Create S3 bucket (BUCKET=name)
 	@bash aws/s3-create.sh $(BUCKET)
 
+s3-show: ## Show S3 bucket (BUCKET=name)
+	@bash aws/s3-show.sh $(BUCKET)
+
+s3-list: ## List all S3 buckets
+	@bash aws/s3-show.sh --list
+
 dynamodb-create: ## Create DynamoDB table (TABLE=name)
 	@bash aws/dynamodb-create.sh $(TABLE)
 
@@ -93,6 +99,12 @@ dynamodb-list: ## List all DynamoDB tables
 
 firehose-create: ## Create Firehose to S3 (STREAM=name BUCKET=name)
 	@bash aws/firehose-create.sh $(STREAM) $(BUCKET)
+
+firehose-show: ## Show Firehose stream (STREAM=name)
+	@bash aws/firehose-show.sh $(STREAM)
+
+firehose-list: ## List all Firehose streams
+	@bash aws/firehose-show.sh --list
 
 # =============================================================================
 # AWS - Parameter Store

@@ -57,10 +57,14 @@ scripts-general/
 | `make cognito-create POOL=name` | Cognito User Pool 作成 |
 | `make cognito-show POOL=name` | Cognito User Pool 表示 |
 | `make s3-create BUCKET=name` | S3 バケット作成 |
+| `make s3-show BUCKET=name` | S3 バケット表示 |
+| `make s3-list` | 全S3 バケット一覧 |
 | `make dynamodb-create TABLE=name` | DynamoDB テーブル作成 |
 | `make dynamodb-show TABLE=name` | DynamoDB テーブル表示 |
 | `make dynamodb-list` | 全DynamoDB テーブル一覧 |
 | `make firehose-create STREAM=name BUCKET=name` | Firehose → S3 作成 |
+| `make firehose-show STREAM=name` | Firehose ストリーム表示 |
+| `make firehose-list` | 全Firehose ストリーム一覧 |
 
 ### AWS - Parameter Store
 
