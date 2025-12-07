@@ -561,3 +561,459 @@ ssm_describe_params() {
             --output json 2>/dev/null
     fi
 }
+
+# =============================================================================
+# Lambda Functions
+# =============================================================================
+
+lambda_exists() {
+    local function_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws lambda get-function --function-name "$function_name" --region "$region" &>/dev/null
+}
+
+lambda_create() {
+    local function_name="$1"
+    local runtime="$2"
+    local handler="$3"
+    local role_arn="$4"
+    local zip_file="$5"
+    local region="${6:-$(aws_get_region)}"
+    local memory="${7:-128}"
+    local timeout="${8:-30}"
+
+    print_info "Creating Lambda function: $function_name"
+
+    aws lambda create-function \
+        --function-name "$function_name" \
+        --runtime "$runtime" \
+        --handler "$handler" \
+        --role "$role_arn" \
+        --zip-file "fileb://$zip_file" \
+        --memory-size "$memory" \
+        --timeout "$timeout" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+lambda_update_code() {
+    local function_name="$1"
+    local zip_file="$2"
+    local region="${3:-$(aws_get_region)}"
+
+    print_info "Updating Lambda code: $function_name"
+
+    aws lambda update-function-code \
+        --function-name "$function_name" \
+        --zip-file "fileb://$zip_file" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+lambda_invoke() {
+    local function_name="$1"
+    local payload="${2:-{}}"
+    local region="${3:-$(aws_get_region)}"
+    local output_file="${4:-/tmp/lambda-response.json}"
+
+    aws lambda invoke \
+        --function-name "$function_name" \
+        --payload "$payload" \
+        --region "$region" \
+        --cli-binary-format raw-in-base64-out \
+        "$output_file" \
+        --output json 2>/dev/null
+}
+
+lambda_get_info() {
+    local function_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws lambda get-function \
+        --function-name "$function_name" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+lambda_list() {
+    local region="${1:-$(aws_get_region)}"
+
+    aws lambda list-functions \
+        --region "$region" \
+        --query 'Functions[*].{Name:FunctionName,Runtime:Runtime,Memory:MemorySize,Timeout:Timeout,Modified:LastModified}' \
+        --output json 2>/dev/null
+}
+
+lambda_get_logs() {
+    local function_name="$1"
+    local region="${2:-$(aws_get_region)}"
+    local start_time="${3:-$(($(date +%s) - 3600))000}"
+    local limit="${4:-50}"
+
+    local log_group="/aws/lambda/$function_name"
+
+    aws logs filter-log-events \
+        --log-group-name "$log_group" \
+        --start-time "$start_time" \
+        --limit "$limit" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+lambda_delete() {
+    local function_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    print_info "Deleting Lambda function: $function_name"
+
+    aws lambda delete-function \
+        --function-name "$function_name" \
+        --region "$region" 2>/dev/null
+}
+
+iam_create_lambda_role() {
+    local role_name="$1"
+
+    print_info "Creating IAM role for Lambda: $role_name"
+
+    local trust_policy=$(cat <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [{
+        "Effect": "Allow",
+        "Principal": {"Service": "lambda.amazonaws.com"},
+        "Action": "sts:AssumeRole"
+    }]
+}
+EOF
+)
+
+    aws iam create-role \
+        --role-name "$role_name" \
+        --assume-role-policy-document "$trust_policy" \
+        --output json 2>/dev/null
+
+    # Attach basic execution role
+    aws iam attach-role-policy \
+        --role-name "$role_name" \
+        --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" 2>/dev/null
+
+    print_info "Waiting for IAM role propagation (10s)..."
+    sleep 10
+}
+
+# =============================================================================
+# Secrets Manager Functions
+# =============================================================================
+
+secrets_exists() {
+    local secret_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws secretsmanager describe-secret --secret-id "$secret_name" --region "$region" &>/dev/null
+}
+
+secrets_create() {
+    local secret_name="$1"
+    local secret_value="$2"
+    local region="${3:-$(aws_get_region)}"
+    local description="${4:-}"
+
+    print_info "Creating secret: $secret_name"
+
+    local cmd="aws secretsmanager create-secret --name \"$secret_name\" --region \"$region\""
+
+    # Check if it's JSON
+    if echo "$secret_value" | jq . &>/dev/null; then
+        cmd="$cmd --secret-string '$secret_value'"
+    else
+        cmd="$cmd --secret-string \"$secret_value\""
+    fi
+
+    if [ -n "$description" ]; then
+        cmd="$cmd --description \"$description\""
+    fi
+
+    eval "$cmd" --output json 2>/dev/null
+}
+
+secrets_get() {
+    local secret_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws secretsmanager get-secret-value \
+        --secret-id "$secret_name" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+secrets_get_value() {
+    local secret_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    local result=$(secrets_get "$secret_name" "$region")
+    json_get "$result" '.SecretString'
+}
+
+secrets_update() {
+    local secret_name="$1"
+    local secret_value="$2"
+    local region="${3:-$(aws_get_region)}"
+
+    print_info "Updating secret: $secret_name"
+
+    aws secretsmanager put-secret-value \
+        --secret-id "$secret_name" \
+        --secret-string "$secret_value" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+secrets_delete() {
+    local secret_name="$1"
+    local region="${2:-$(aws_get_region)}"
+    local force="${3:-false}"
+
+    print_info "Deleting secret: $secret_name"
+
+    if [ "$force" = true ]; then
+        aws secretsmanager delete-secret \
+            --secret-id "$secret_name" \
+            --force-delete-without-recovery \
+            --region "$region" 2>/dev/null
+    else
+        aws secretsmanager delete-secret \
+            --secret-id "$secret_name" \
+            --region "$region" 2>/dev/null
+    fi
+}
+
+secrets_list() {
+    local region="${1:-$(aws_get_region)}"
+
+    aws secretsmanager list-secrets \
+        --region "$region" \
+        --query 'SecretList[*].{Name:Name,Description:Description,Created:CreatedDate,Modified:LastChangedDate}' \
+        --output json 2>/dev/null
+}
+
+secrets_describe() {
+    local secret_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws secretsmanager describe-secret \
+        --secret-id "$secret_name" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+# =============================================================================
+# SQS Functions
+# =============================================================================
+
+sqs_queue_exists() {
+    local queue_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws sqs get-queue-url --queue-name "$queue_name" --region "$region" &>/dev/null
+}
+
+sqs_get_queue_url() {
+    local queue_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws sqs get-queue-url --queue-name "$queue_name" --region "$region" --query 'QueueUrl' --output text 2>/dev/null
+}
+
+sqs_create_queue() {
+    local queue_name="$1"
+    local region="${2:-$(aws_get_region)}"
+    local visibility_timeout="${3:-30}"
+    local message_retention="${4:-345600}"
+
+    print_info "Creating SQS queue: $queue_name"
+
+    aws sqs create-queue \
+        --queue-name "$queue_name" \
+        --region "$region" \
+        --attributes "VisibilityTimeout=$visibility_timeout,MessageRetentionPeriod=$message_retention" \
+        --output json 2>/dev/null
+}
+
+sqs_create_fifo_queue() {
+    local queue_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    # FIFO queues must end with .fifo
+    if [[ ! "$queue_name" =~ \.fifo$ ]]; then
+        queue_name="${queue_name}.fifo"
+    fi
+
+    print_info "Creating FIFO queue: $queue_name"
+
+    aws sqs create-queue \
+        --queue-name "$queue_name" \
+        --region "$region" \
+        --attributes "FifoQueue=true,ContentBasedDeduplication=true" \
+        --output json 2>/dev/null
+}
+
+sqs_delete_queue() {
+    local queue_url="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    print_info "Deleting SQS queue"
+    aws sqs delete-queue --queue-url "$queue_url" --region "$region" 2>/dev/null
+}
+
+sqs_send_message() {
+    local queue_url="$1"
+    local message="$2"
+    local region="${3:-$(aws_get_region)}"
+
+    aws sqs send-message \
+        --queue-url "$queue_url" \
+        --message-body "$message" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+sqs_receive_message() {
+    local queue_url="$1"
+    local region="${2:-$(aws_get_region)}"
+    local max_messages="${3:-1}"
+    local wait_time="${4:-0}"
+
+    aws sqs receive-message \
+        --queue-url "$queue_url" \
+        --max-number-of-messages "$max_messages" \
+        --wait-time-seconds "$wait_time" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+sqs_get_attributes() {
+    local queue_url="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws sqs get-queue-attributes \
+        --queue-url "$queue_url" \
+        --attribute-names All \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+sqs_list_queues() {
+    local region="${1:-$(aws_get_region)}"
+    local prefix="${2:-}"
+
+    if [ -n "$prefix" ]; then
+        aws sqs list-queues --region "$region" --queue-name-prefix "$prefix" --output json 2>/dev/null
+    else
+        aws sqs list-queues --region "$region" --output json 2>/dev/null
+    fi
+}
+
+sqs_purge_queue() {
+    local queue_url="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    print_info "Purging SQS queue"
+    aws sqs purge-queue --queue-url "$queue_url" --region "$region" 2>/dev/null
+}
+
+# =============================================================================
+# SNS Functions
+# =============================================================================
+
+sns_topic_exists() {
+    local topic_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    local topics=$(aws sns list-topics --region "$region" --query "Topics[?contains(TopicArn, ':$topic_name')].TopicArn" --output text 2>/dev/null)
+    [ -n "$topics" ]
+}
+
+sns_get_topic_arn() {
+    local topic_name="$1"
+    local region="${2:-$(aws_get_region)}"
+    local account_id="${3:-$(aws_get_account_id)}"
+
+    echo "arn:aws:sns:${region}:${account_id}:${topic_name}"
+}
+
+sns_create_topic() {
+    local topic_name="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    print_info "Creating SNS topic: $topic_name"
+
+    aws sns create-topic \
+        --name "$topic_name" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+sns_delete_topic() {
+    local topic_arn="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    print_info "Deleting SNS topic"
+    aws sns delete-topic --topic-arn "$topic_arn" --region "$region" 2>/dev/null
+}
+
+sns_publish() {
+    local topic_arn="$1"
+    local message="$2"
+    local region="${3:-$(aws_get_region)}"
+    local subject="${4:-}"
+
+    local cmd="aws sns publish --topic-arn \"$topic_arn\" --message \"$message\" --region \"$region\""
+
+    if [ -n "$subject" ]; then
+        cmd="$cmd --subject \"$subject\""
+    fi
+
+    eval "$cmd" --output json 2>/dev/null
+}
+
+sns_subscribe() {
+    local topic_arn="$1"
+    local protocol="$2"
+    local endpoint="$3"
+    local region="${4:-$(aws_get_region)}"
+
+    print_info "Subscribing to SNS topic"
+
+    aws sns subscribe \
+        --topic-arn "$topic_arn" \
+        --protocol "$protocol" \
+        --notification-endpoint "$endpoint" \
+        --region "$region" \
+        --output json 2>/dev/null
+}
+
+sns_list_topics() {
+    local region="${1:-$(aws_get_region)}"
+
+    aws sns list-topics --region "$region" --output json 2>/dev/null
+}
+
+sns_list_subscriptions() {
+    local topic_arn="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    if [ -n "$topic_arn" ]; then
+        aws sns list-subscriptions-by-topic --topic-arn "$topic_arn" --region "$region" --output json 2>/dev/null
+    else
+        aws sns list-subscriptions --region "$region" --output json 2>/dev/null
+    fi
+}
+
+sns_get_topic_attributes() {
+    local topic_arn="$1"
+    local region="${2:-$(aws_get_region)}"
+
+    aws sns get-topic-attributes --topic-arn "$topic_arn" --region "$region" --output json 2>/dev/null
+}

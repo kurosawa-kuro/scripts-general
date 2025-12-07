@@ -33,6 +33,30 @@ setup-github: ## Setup GitHub SSH key
 setup-portainer: ## Setup Portainer (Docker UI)
 	@bash setup/portainer-install.sh
 
+setup-python: ## Install Python via pyenv (VERSION=3.x.x)
+	@bash setup/python-install.sh $(VERSION)
+
+setup-terraform: ## Install Terraform (VERSION=x.x.x)
+	@bash setup/terraform-install.sh $(VERSION)
+
+setup-aws-cli: ## Install AWS CLI v2
+	@bash setup/aws-cli-install.sh
+
+setup-rust: ## Install Rust via rustup
+	@bash setup/rust-install.sh
+
+setup-kubectl: ## Install kubectl
+	@bash setup/kubectl-install.sh $(VERSION)
+
+setup-helm: ## Install Helm
+	@bash setup/helm-install.sh
+
+setup-kind: ## Install kind (K8s in Docker)
+	@bash setup/kind-install.sh
+
+setup-buildx: ## Setup Docker buildx
+	@bash setup/docker-buildx.sh $(NAME)
+
 env-check: ## Check development environment
 	@bash setup/env-check.sh
 
@@ -107,6 +131,67 @@ firehose-list: ## List all Firehose streams
 	@bash aws/firehose-show.sh --list
 
 # =============================================================================
+# AWS - Lambda
+# =============================================================================
+
+lambda-create: ## Create Lambda function (NAME=name [ZIP=file.zip])
+	@bash aws/lambda-create.sh $(NAME) $(ZIP)
+
+lambda-show: ## Show Lambda function (NAME=name)
+	@bash aws/lambda-show.sh $(NAME)
+
+lambda-list: ## List all Lambda functions
+	@bash aws/lambda-show.sh --list
+
+lambda-invoke: ## Invoke Lambda function (NAME=name [PAYLOAD='{}'])
+	@aws lambda invoke --function-name $(NAME) --payload '$(PAYLOAD)' /tmp/lambda-out.json && cat /tmp/lambda-out.json
+
+lambda-logs: ## Show Lambda logs (NAME=name)
+	@aws logs tail /aws/lambda/$(NAME) --since 1h
+
+# =============================================================================
+# AWS - Secrets Manager
+# =============================================================================
+
+secrets-create: ## Create secret (NAME=name VALUE=value)
+	@bash aws/secrets-create.sh $(NAME) "$(VALUE)"
+
+secrets-show: ## Show secret metadata (NAME=name [VALUE=1 to show value])
+	@bash aws/secrets-show.sh $(NAME) $(if $(VALUE),--value,)
+
+secrets-list: ## List all secrets
+	@bash aws/secrets-show.sh --list
+
+secrets-delete: ## Delete secret (NAME=name [FORCE=1])
+	@bash aws/secrets-create.sh --delete $(NAME) $(if $(FORCE),true,)
+
+# =============================================================================
+# AWS - SQS (Simple Queue Service)
+# =============================================================================
+
+sqs-create: ## Create SQS queue (NAME=name [--fifo])
+	@bash aws/sqs-create.sh $(NAME) $(if $(FIFO),--fifo,)
+
+sqs-show: ## Show SQS queue details (NAME=name)
+	@bash aws/sqs-show.sh $(NAME)
+
+sqs-list: ## List all SQS queues
+	@bash aws/sqs-show.sh --list
+
+# =============================================================================
+# AWS - SNS (Simple Notification Service)
+# =============================================================================
+
+sns-create: ## Create SNS topic (NAME=name)
+	@bash aws/sns-create.sh $(NAME)
+
+sns-show: ## Show SNS topic details (NAME=name)
+	@bash aws/sns-show.sh $(NAME)
+
+sns-list: ## List all SNS topics
+	@bash aws/sns-show.sh --list
+
+# =============================================================================
 # AWS - Parameter Store
 # =============================================================================
 
@@ -146,6 +231,54 @@ eks-config: ## Setup EKS kubeconfig (CLUSTER=name)
 	@bash k8s/eks-config.sh $(CLUSTER)
 
 # =============================================================================
+# Kubernetes - Helm
+# =============================================================================
+
+helm-repo: ## Manage Helm repos (add NAME URL / --common / --list)
+	@bash k8s/helm-repo.sh $(CMD) $(NAME) $(URL)
+
+helm-repo-common: ## Add common Helm repos
+	@bash k8s/helm-repo.sh --common
+
+helm-install: ## Install Helm chart (RELEASE=name CHART=repo/chart [-n NS])
+	@bash k8s/helm-install.sh $(RELEASE) $(CHART) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+helm-list: ## List Helm releases
+	@bash k8s/helm-list.sh $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+helm-show: ## Show Helm release (RELEASE=name)
+	@bash k8s/helm-list.sh $(RELEASE) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+helm-uninstall: ## Uninstall Helm release (RELEASE=name)
+	@bash k8s/helm-uninstall.sh $(RELEASE) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+# =============================================================================
+# Kubernetes - Secrets
+# =============================================================================
+
+k8s-secret-create: ## Create K8s secret (NAME=name KEY=val [KEY=val...])
+	@bash k8s/secret-create.sh $(NAME) $(KEYS) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+k8s-secret-show: ## Show K8s secret (NAME=name [--decode])
+	@bash k8s/secret-show.sh $(NAME) $(if $(DECODE),--decode,) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+k8s-secret-list: ## List K8s secrets
+	@bash k8s/secret-show.sh --list $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+# =============================================================================
+# Kubernetes - Ingress
+# =============================================================================
+
+ingress-create: ## Create Ingress (NAME=name HOST=host SERVICE=svc PORT=port)
+	@bash k8s/ingress-create.sh $(NAME) --host $(HOST) --service $(SERVICE) --port $(PORT) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+ingress-show: ## Show Ingress (NAME=name)
+	@bash k8s/ingress-show.sh $(NAME) $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+ingress-list: ## List Ingresses
+	@bash k8s/ingress-show.sh --list $(if $(NAMESPACE),-n $(NAMESPACE),)
+
+# =============================================================================
 # Git Config
 # =============================================================================
 
@@ -172,6 +305,31 @@ docker-kill: ## Kill all docker containers
 	@bash dev/docker-kill.sh
 
 # =============================================================================
+# Operations - Cost & Monitoring
+# =============================================================================
+
+aws-cost: ## Show AWS cost summary
+	@bash ops/aws-cost.sh
+
+aws-cost-daily: ## Show AWS daily costs
+	@bash ops/aws-cost.sh --daily
+
+aws-cost-services: ## Show AWS cost by service
+	@bash ops/aws-cost.sh --services
+
+aws-cost-forecast: ## Show AWS cost forecast
+	@bash ops/aws-cost.sh --forecast
+
+health-check: ## Check endpoints health (URL=... or --k8s/--aws)
+	@bash ops/health-check.sh $(URL) $(if $(K8S),--k8s,) $(if $(AWS),--aws,)
+
+backup-s3: ## Backup to S3 (SOURCE=path BUCKET=name [PREFIX=backups])
+	@bash ops/backup-s3.sh $(SOURCE) $(BUCKET) $(PREFIX)
+
+cleanup-ecr: ## Clean old ECR images (REPO=name [KEEP=10])
+	@bash ops/cleanup-ecr.sh $(REPO) $(if $(KEEP),--keep $(KEEP),)
+
+# =============================================================================
 # Utilities
 # =============================================================================
 
@@ -192,3 +350,9 @@ cheat-aws: ## Show aws cheatsheet
 
 cheat-linux: ## Show linux cheatsheet
 	@bash cheat.sh linux
+
+cheat-helm: ## Show helm cheatsheet
+	@bash cheat.sh helm
+
+cheat-terraform: ## Show terraform cheatsheet
+	@bash cheat.sh terraform

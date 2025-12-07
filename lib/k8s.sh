@@ -270,3 +270,221 @@ k8s_wait_deployment() {
     print_info "Waiting for deployment '$deployment_name' to be ready..."
     kubectl rollout status deployment/"$deployment_name" -n "$namespace" --timeout="${timeout}s" 2>&1
 }
+
+# =============================================================================
+# Helm Functions
+# =============================================================================
+
+helm_repo_exists() {
+    local repo_name="$1"
+    helm repo list 2>/dev/null | grep -q "^${repo_name}\s"
+}
+
+helm_repo_add() {
+    local repo_name="$1"
+    local repo_url="$2"
+
+    if helm_repo_exists "$repo_name"; then
+        print_info "Repo '$repo_name' already exists, updating..."
+        helm repo update "$repo_name" 2>/dev/null
+        return 0
+    fi
+
+    print_info "Adding Helm repo: $repo_name"
+    helm repo add "$repo_name" "$repo_url" 2>/dev/null
+    helm repo update "$repo_name" 2>/dev/null
+}
+
+helm_repo_list() {
+    helm repo list 2>/dev/null
+}
+
+helm_release_exists() {
+    local release_name="$1"
+    local namespace="${2:-default}"
+
+    helm list -n "$namespace" 2>/dev/null | grep -q "^${release_name}\s"
+}
+
+helm_install() {
+    local release_name="$1"
+    local chart="$2"
+    local namespace="${3:-default}"
+    local values_file="${4:-}"
+
+    print_info "Installing Helm release: $release_name"
+
+    local cmd="helm install $release_name $chart -n $namespace --create-namespace"
+
+    if [ -n "$values_file" ] && [ -f "$values_file" ]; then
+        cmd="$cmd -f $values_file"
+    fi
+
+    eval "$cmd" 2>&1
+}
+
+helm_upgrade() {
+    local release_name="$1"
+    local chart="$2"
+    local namespace="${3:-default}"
+    local values_file="${4:-}"
+
+    print_info "Upgrading Helm release: $release_name"
+
+    local cmd="helm upgrade $release_name $chart -n $namespace --install"
+
+    if [ -n "$values_file" ] && [ -f "$values_file" ]; then
+        cmd="$cmd -f $values_file"
+    fi
+
+    eval "$cmd" 2>&1
+}
+
+helm_uninstall() {
+    local release_name="$1"
+    local namespace="${2:-default}"
+
+    print_info "Uninstalling Helm release: $release_name"
+    helm uninstall "$release_name" -n "$namespace" 2>&1
+}
+
+helm_list() {
+    local namespace="${1:-}"
+
+    if [ -n "$namespace" ]; then
+        helm list -n "$namespace" 2>/dev/null
+    else
+        helm list -A 2>/dev/null
+    fi
+}
+
+helm_get_values() {
+    local release_name="$1"
+    local namespace="${2:-default}"
+
+    helm get values "$release_name" -n "$namespace" 2>/dev/null
+}
+
+helm_get_status() {
+    local release_name="$1"
+    local namespace="${2:-default}"
+
+    helm status "$release_name" -n "$namespace" 2>/dev/null
+}
+
+# =============================================================================
+# Secret Functions
+# =============================================================================
+
+k8s_secret_exists() {
+    local secret_name="$1"
+    local namespace="${2:-default}"
+
+    kubectl get secret "$secret_name" -n "$namespace" &>/dev/null
+}
+
+k8s_secret_create_generic() {
+    local secret_name="$1"
+    local namespace="${2:-default}"
+    shift 2
+    local literals=("$@")
+
+    print_info "Creating secret: $secret_name"
+
+    local cmd="kubectl create secret generic $secret_name -n $namespace"
+    for lit in "${literals[@]}"; do
+        cmd="$cmd --from-literal=$lit"
+    done
+
+    eval "$cmd" 2>&1
+}
+
+k8s_secret_create_from_file() {
+    local secret_name="$1"
+    local namespace="${2:-default}"
+    local file_path="$3"
+    local key="${4:-$(basename "$file_path")}"
+
+    print_info "Creating secret from file: $secret_name"
+
+    kubectl create secret generic "$secret_name" -n "$namespace" --from-file="$key=$file_path" 2>&1
+}
+
+k8s_secret_create_tls() {
+    local secret_name="$1"
+    local namespace="${2:-default}"
+    local cert_file="$3"
+    local key_file="$4"
+
+    print_info "Creating TLS secret: $secret_name"
+
+    kubectl create secret tls "$secret_name" -n "$namespace" --cert="$cert_file" --key="$key_file" 2>&1
+}
+
+k8s_secret_get() {
+    local secret_name="$1"
+    local namespace="${2:-default}"
+
+    kubectl get secret "$secret_name" -n "$namespace" -o json 2>/dev/null
+}
+
+k8s_secret_get_value() {
+    local secret_name="$1"
+    local key="$2"
+    local namespace="${3:-default}"
+
+    kubectl get secret "$secret_name" -n "$namespace" -o jsonpath="{.data.$key}" 2>/dev/null | base64 -d
+}
+
+k8s_secret_list() {
+    local namespace="${1:-}"
+
+    if [ -n "$namespace" ]; then
+        kubectl get secrets -n "$namespace" 2>/dev/null
+    else
+        kubectl get secrets -A 2>/dev/null
+    fi
+}
+
+k8s_secret_delete() {
+    local secret_name="$1"
+    local namespace="${2:-default}"
+
+    print_info "Deleting secret: $secret_name"
+    kubectl delete secret "$secret_name" -n "$namespace" 2>&1
+}
+
+# =============================================================================
+# Ingress Functions
+# =============================================================================
+
+k8s_ingress_exists() {
+    local ingress_name="$1"
+    local namespace="${2:-default}"
+
+    kubectl get ingress "$ingress_name" -n "$namespace" &>/dev/null
+}
+
+k8s_ingress_list() {
+    local namespace="${1:-}"
+
+    if [ -n "$namespace" ]; then
+        kubectl get ingress -n "$namespace" 2>/dev/null
+    else
+        kubectl get ingress -A 2>/dev/null
+    fi
+}
+
+k8s_ingress_get() {
+    local ingress_name="$1"
+    local namespace="${2:-default}"
+
+    kubectl get ingress "$ingress_name" -n "$namespace" -o json 2>/dev/null
+}
+
+k8s_ingress_describe() {
+    local ingress_name="$1"
+    local namespace="${2:-default}"
+
+    kubectl describe ingress "$ingress_name" -n "$namespace" 2>/dev/null
+}

@@ -186,6 +186,87 @@ show_aws() {
 EOF
 }
 
+show_helm() {
+    print_section "Helm"
+    cat <<'EOF'
+  # Repository
+  helm repo add <name> <url>        # Add repo
+  helm repo update                  # Update repos
+  helm repo list                    # List repos
+  helm search repo <keyword>        # Search charts
+
+  # Install & Upgrade
+  helm install <release> <chart>    # Install chart
+  helm install <rel> <chart> -n <ns> # With namespace
+  helm install <rel> <chart> -f values.yaml
+  helm upgrade <rel> <chart>        # Upgrade release
+  helm upgrade --install <rel> <chart> # Install or upgrade
+
+  # List & Status
+  helm list                         # List releases
+  helm list -A                      # All namespaces
+  helm status <release>             # Release status
+  helm history <release>            # Release history
+
+  # Get Info
+  helm get values <release>         # Get values
+  helm get manifest <release>       # Get manifest
+  helm show values <chart>          # Show chart values
+
+  # Delete
+  helm uninstall <release>          # Uninstall release
+  helm uninstall <release> -n <ns>  # With namespace
+
+  # Debug
+  helm template <rel> <chart>       # Render templates
+  helm lint <chart>                 # Lint chart
+  helm install --dry-run --debug <rel> <chart>
+EOF
+}
+
+show_terraform() {
+    print_section "Terraform"
+    cat <<'EOF'
+  # Initialize
+  terraform init                    # Initialize directory
+  terraform init -upgrade           # Upgrade providers
+  terraform providers               # List providers
+
+  # Plan & Apply
+  terraform plan                    # Preview changes
+  terraform plan -out=plan.tfplan   # Save plan
+  terraform apply                   # Apply changes
+  terraform apply plan.tfplan       # Apply saved plan
+  terraform apply -auto-approve     # Skip confirmation
+
+  # State
+  terraform state list              # List resources
+  terraform state show <resource>   # Show resource
+  terraform state mv <src> <dst>    # Move resource
+  terraform state rm <resource>     # Remove from state
+  terraform import <res> <id>       # Import resource
+
+  # Destroy
+  terraform destroy                 # Destroy all
+  terraform destroy -target=<res>   # Destroy specific
+
+  # Workspace
+  terraform workspace list          # List workspaces
+  terraform workspace new <name>    # Create workspace
+  terraform workspace select <name> # Switch workspace
+
+  # Format & Validate
+  terraform fmt                     # Format files
+  terraform fmt -recursive          # Format all
+  terraform validate                # Validate config
+
+  # Output
+  terraform output                  # Show outputs
+  terraform output -json            # JSON format
+  terraform console                 # Interactive console
+EOF
+}
+
 show_linux() {
     print_section "Linux/Shell"
     cat <<'EOF'
@@ -235,9 +316,13 @@ show_all() {
     echo ""
     show_k8s
     echo ""
+    show_helm
+    echo ""
     show_git
     echo ""
     show_aws
+    echo ""
+    show_terraform
     echo ""
     show_linux
 }
@@ -246,12 +331,14 @@ show_categories() {
     echo ""
     echo "Available categories:"
     echo ""
-    echo -e "  ${CYAN}docker${NC}  - Docker & Compose commands"
-    echo -e "  ${CYAN}k8s${NC}     - Kubernetes commands"
-    echo -e "  ${CYAN}git${NC}     - Git commands"
-    echo -e "  ${CYAN}aws${NC}     - AWS CLI commands"
-    echo -e "  ${CYAN}linux${NC}   - Linux/Shell commands"
-    echo -e "  ${CYAN}all${NC}     - Show all categories"
+    echo -e "  ${CYAN}docker${NC}     - Docker & Compose commands"
+    echo -e "  ${CYAN}k8s${NC}        - Kubernetes commands"
+    echo -e "  ${CYAN}helm${NC}       - Helm package manager"
+    echo -e "  ${CYAN}git${NC}        - Git commands"
+    echo -e "  ${CYAN}aws${NC}        - AWS CLI commands"
+    echo -e "  ${CYAN}terraform${NC}  - Terraform IaC"
+    echo -e "  ${CYAN}linux${NC}      - Linux/Shell commands"
+    echo -e "  ${CYAN}all${NC}        - Show all categories"
     echo ""
     echo "Usage: $0 [CATEGORY|SEARCH_TERM]"
 }
@@ -289,11 +376,17 @@ main() {
         k8s|kubernetes|kube)
             show_k8s
             ;;
+        helm)
+            show_helm
+            ;;
         git)
             show_git
             ;;
         aws)
             show_aws
+            ;;
+        terraform|tf)
+            show_terraform
             ;;
         linux|shell|bash)
             show_linux
