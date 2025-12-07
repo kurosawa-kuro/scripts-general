@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(sudo mkdir:*)"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}

@@ -85,6 +85,12 @@ s3-create: ## Create S3 bucket (BUCKET=name)
 dynamodb-create: ## Create DynamoDB table (TABLE=name)
 	@bash aws/dynamodb-create.sh $(TABLE)
 
+dynamodb-show: ## Show DynamoDB table (TABLE=name)
+	@bash aws/dynamodb-show.sh $(TABLE)
+
+dynamodb-list: ## List all DynamoDB tables
+	@bash aws/dynamodb-show.sh --list
+
 firehose-create: ## Create Firehose to S3 (STREAM=name BUCKET=name)
 	@bash aws/firehose-create.sh $(STREAM) $(BUCKET)
 
