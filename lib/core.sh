@@ -61,6 +61,7 @@ print_info() {
 
 print_debug() {
     [[ "${DEBUG:-0}" == "1" ]] && echo -e "${MAGENTA}[DEBUG]${NC} $1"
+    return 0
 }
 
 # =============================================================================
@@ -270,4 +271,176 @@ script_name() {
 
 script_dir() {
     cd "$(dirname "${BASH_SOURCE[1]:-$0}")" && pwd
+}
+
+# =============================================================================
+# Environment Loading
+# =============================================================================
+
+load_env() {
+    local env_file="${1:-}"
+    local script_dir
+
+    # Get the directory of the calling script
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[1]:-$0}")" && pwd)"
+
+    # If no file specified, try common locations
+    if [ -z "$env_file" ]; then
+        if [ -f "$script_dir/.env" ]; then
+            env_file="$script_dir/.env"
+        elif [ -f "$script_dir/../.env" ]; then
+            env_file="$script_dir/../.env"
+        else
+            return 1
+        fi
+    fi
+
+    if [ -f "$env_file" ]; then
+        # shellcheck disable=SC1090
+        source "$env_file"
+        print_debug "Loaded env from: $env_file"
+        return 0
+    fi
+
+    return 1
+}
+
+# =============================================================================
+# URL/Connection Utilities
+# =============================================================================
+
+parse_postgres_url() {
+    local url="$1"
+
+    # Remove postgresql:// or postgres:// prefix
+    local stripped="${url#postgresql://}"
+    stripped="${stripped#postgres://}"
+
+    # Extract user:password@host/database
+    local userinfo="${stripped%%@*}"
+    local hostpart="${stripped#*@}"
+
+    # Extract user and password
+    PG_USER="${userinfo%%:*}"
+    PG_PASS="${userinfo#*:}"
+
+    # Extract host:port/database?params
+    local hostdb="${hostpart%%\?*}"
+    PG_PARAMS="${hostpart#*\?}"
+    [ "$PG_PARAMS" = "$hostpart" ] && PG_PARAMS=""
+
+    # Extract host:port and database
+    local hostport="${hostdb%%/*}"
+    PG_DATABASE="${hostdb#*/}"
+
+    # Extract host and port
+    if [[ "$hostport" == *:* ]]; then
+        PG_HOST="${hostport%%:*}"
+        PG_PORT="${hostport#*:}"
+    else
+        PG_HOST="$hostport"
+        PG_PORT="5432"
+    fi
+}
+
+parse_mongo_url() {
+    local url="$1"
+
+    # Check protocol
+    if [[ "$url" == mongodb+srv://* ]]; then
+        MONGO_PROTOCOL="mongodb+srv"
+        local stripped="${url#mongodb+srv://}"
+    else
+        MONGO_PROTOCOL="mongodb"
+        local stripped="${url#mongodb://}"
+    fi
+
+    # Extract user:password@host/database
+    local userinfo="${stripped%%@*}"
+    local hostpart="${stripped#*@}"
+
+    # Extract user and password
+    if [[ "$userinfo" == *:* ]]; then
+        MONGO_USER="${userinfo%%:*}"
+        MONGO_PASS="${userinfo#*:}"
+    else
+        MONGO_USER="$userinfo"
+        MONGO_PASS=""
+    fi
+
+    # Extract host/database?params
+    local hostdb="${hostpart%%\?*}"
+    MONGO_PARAMS="${hostpart#*\?}"
+    [ "$MONGO_PARAMS" = "$hostpart" ] && MONGO_PARAMS=""
+
+    # Extract host and database
+    if [[ "$hostdb" == */* ]]; then
+        MONGO_HOST="${hostdb%%/*}"
+        MONGO_DATABASE="${hostdb#*/}"
+    else
+        MONGO_HOST="$hostdb"
+        MONGO_DATABASE=""
+    fi
+}
+
+# =============================================================================
+# Discord Utilities
+# =============================================================================
+
+validate_discord_webhook() {
+    local url="$1"
+
+    if [[ "$url" =~ ^https://discord\.com/api/webhooks/[0-9]+/.+ ]] || \
+       [[ "$url" =~ ^https://discordapp\.com/api/webhooks/[0-9]+/.+ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+discord_send_message() {
+    local webhook_url="$1"
+    local content="$2"
+
+    local payload="{\"content\": \"$content\"}"
+
+    local response=$(curl -s -w "\n%{http_code}" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$webhook_url" 2>&1)
+
+    local http_code=$(echo "$response" | tail -1)
+
+    [ "$http_code" = "204" ] || [ "$http_code" = "200" ]
+}
+
+discord_send_embed() {
+    local webhook_url="$1"
+    local title="$2"
+    local description="$3"
+    local color="${4:-5814783}"
+
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local hostname=$(hostname 2>/dev/null || echo "unknown")
+
+    local payload=$(cat <<EOF
+{
+    "embeds": [{
+        "title": "$title",
+        "description": "$description",
+        "color": $color,
+        "timestamp": "$timestamp",
+        "footer": {"text": "$hostname"}
+    }]
+}
+EOF
+)
+
+    local response=$(curl -s -w "\n%{http_code}" \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "$webhook_url" 2>&1)
+
+    local http_code=$(echo "$response" | tail -1)
+
+    [ "$http_code" = "204" ] || [ "$http_code" = "200" ]
 }
